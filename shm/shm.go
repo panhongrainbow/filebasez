@@ -3,6 +3,7 @@ package shm
 // #include "shm.h"
 import "C"
 import (
+	"encoding/binary"
 	"os"
 	"unsafe"
 )
@@ -17,8 +18,8 @@ type VsysFlags int
 */
 const (
 	StatusIpcNone                = 0               // the constant with the value of 0 that represents no shared memory creation flag
-	StatusIpcCreate    VsysFlags = C.IPC_CREAT     // the constant with the value of 512 that represents the flag for creating a new shared memory segment, defined as IPC_CREAT in C language
-	StatusIpcExclusive           = C.IPC_EXCL      // the constant with the value of 1024 that represents the flag for creating a new shared memory segment exclusively
+	StatusIpcCreate    VsysFlags = C.IPC_CREAT     // the constant with the value of 512 that represents the flag for creating a newWithReturnId shared memory segment, defined as IPC_CREAT in C language
+	StatusIpcExclusive           = C.IPC_EXCL      // the constant with the value of 1024 that represents the flag for creating a newWithReturnId shared memory segment exclusively
 	StatusHugePages              = C.SHM_HUGETLB   // the constant with the value of 2048 that represents the flag for requesting shared memory allocation using huge pages.
 	StatusNoReserve              = C.SHM_NORESERVE // the constant with the value of C.SHM_NORESERVE that represents the flag for creating a shared memory segment without reserving swap space.
 )
@@ -29,21 +30,46 @@ func (e Error) Error() string {
 	return string(e)
 }
 
+const (
+	MajorVersion uint16 = 1
+	MinorVersion uint16 = 2
+	PatchVersion uint16 = 3
+)
+
 // default value for shm
 const (
 	defautlShmFlag       = StatusIpcCreate | StatusIpcExclusive
 	defaultShmPermission = 0600
+	defualtMinShmSize    = 2 + 2 + 2 + 8 + 8 + 8 + 4 + 8
 )
 
 const (
-	ErrFailToRetrieveShmSize = Error("failed to retrieve shm size")
-	ErrNegativeShmKey        = Error("shm key should not be negative")
-	ErrEndOfFile             = Error("end of file")
-	ErrIllegalKey            = Error("use Illegal key in shm")
-	ErrDataDevided           = Error("data is divided into parts due to lack of space")
-	ErrShmIdNotSet           = Error("shm id not set")
-	ErrShmEmptyPoint         = Error("shm point is empty")
+	ErrFailToRetrieveShmSize       = Error("failed to retrieve shm size")
+	ErrNegativeShmKey              = Error("shm key should not be negative")
+	ErrEndOfFile                   = Error("end of file")
+	ErrIllegalKey                  = Error("use Illegal key in shm")
+	ErrDataDevided                 = Error("data is divided into parts due to lack of space")
+	ErrShmIdNotSet                 = Error("shm id not set")
+	ErrShmEmptyPoint               = Error("shm point is empty")
+	ErrShmAlreadyExist             = Error("shm already exist")
+	ErrShmNotExist                 = Error("shm not exist")
+	ErrShmFetchInfo                = Error("fetch shm info failed")
+	ErrInitializeMajorVersionValue = Error("initialization of major version value failed")
+	ErrInitializeMinorVersionValue = Error("initialization of minor version value failed")
+	ErrInitializePatchVersionValue = Error("initialization of patch version value failed")
+	ErrInitializeKeyValue          = Error("initialization of key value failed")
+	ErrInitializeIdValue           = Error("initialization of id value failed")
+	ErrInitializeSizeValue         = Error("initialization of size value failed")
+	ErrInitializeParameterValue    = Error("initialization of parameter value failed")
+	ErrInitializeOffsetValue       = Error("initialization of offset value failed")
 )
+
+// VsegmentMap : map key to id
+var VsegmentMap map[int64]int64
+
+func init() {
+	VsegmentMap = make(map[int64]int64, 5)
+}
 
 // Vsegment is a native representation of a SysV shared memory segment
 type Vsegment struct {
@@ -60,14 +86,27 @@ type Vopts struct {
 	Parameter os.FileMode
 }
 
+type Vinfo struct {
+	Major  uint16
+	Minor  uint16
+	Patch  uint16
+	Key    int64
+	Id     int64
+	Size   int64
+	Flag   int32
+	Offset int64
+}
+
+// >>>>> >>>>> >>>>> [Basic Functions]
+
 /*
-New creates a new shared memory segment based on the given "Vopts" options.
+newWithReturnId creates a shm shared memory segment based on the given "Vopts" options.
 It returns a pointer to a "Vsegment" variable and an error.
 */
-func New(opts Vopts) (segment *Vsegment, err error) {
+func newWithReturnId(opts Vopts) (segment *Vsegment, err error) {
 	switch {
 	/*
-		New creates a new shared memory segment based on the given "Vopts" options
+		newWithReturnId creates a new shared memory segment based on the given "Vopts" options
 		It returns a pointer to a "Vsegment" variable and an error
 	*/
 	case opts.Key > 0:
@@ -173,9 +212,9 @@ func createShmWithKey(opts Vopts) (segment *Vsegment, err error) {
 	return
 }
 
-// WriteWithId writes data to a shared memory segment and checks if the data to be written exceeds the available space in the segment.
+// writeWithId writes data to a shared memory segment and checks if the data to be written exceeds the available space in the segment.
 // If the data to write is too large, it reduces the length to the remaining available space and sets a previous error variable.
-func (receive *Vsegment) WriteWithId(data []byte) (wroteLength int64, err error) {
+func (receive *Vsegment) writeWithId(data []byte) (wroteLength int64, err error) {
 	// Check if the Vsegment pointer is nil
 	if receive == nil {
 		err = ErrShmEmptyPoint
@@ -227,9 +266,9 @@ func (receive *Vsegment) WriteWithId(data []byte) (wroteLength int64, err error)
 	return
 }
 
-// ReadWithId is a function that reads data from a shared memory segment.
+// readWithId is a function that reads data from a shared memory segment.
 // It includes error checking and buffer allocation before reading data from shared memory.
-func (receive *Vsegment) ReadWithId(data []byte) (readLength int, err error) {
+func (receive *Vsegment) readWithId(data []byte) (readLength int64, err error) {
 	// Check if the Vsegment pointer is nil
 	if receive == nil {
 		err = ErrShmEmptyPoint
@@ -269,10 +308,194 @@ func (receive *Vsegment) ReadWithId(data []byte) (readLength int, err error) {
 	count := copy(data, C.GoBytes(buffer, C.int(length)))
 	if count > 0 {
 		receive.offset += int64(count)
-		readLength = count
+		readLength = int64(count)
 		return
 	}
 
 	// Return the number of bytes read and the error
+	return
+}
+
+// deleteWithId defines a Go function that calls an external C function to close a shared memory region.
+func (receive *Vsegment) deleteWithId(id int64) (err error) {
+	// Call an external C function `sysv_shm_close` to close the specified shared memory region.
+	// The `id` argument is passed as an integer and is cast to a C integer using `C.int`.
+	_, err = C.sysv_shm_close(C.int(id))
+	// Return any error that occurred during the call to `sysv_shm_close`.
+	return
+}
+
+// >>>>> >>>>> >>>>> [Extension Function]
+
+/*
+NewShm defines a function called "NewShm" which creates a new segment map with specified options.
+It writes values to the map and returns an error if any of the writes fail.
+The values written include version information, a key, ID, size, and a parameter value.
+*/
+func NewShm(opts Vopts) (err error) {
+	//
+	if _, ok := VsegmentMap[opts.Key]; ok {
+		err = ErrShmAlreadyExist
+		return
+	}
+
+	//
+	sg, err := newWithReturnId(opts)
+	if err != nil {
+		return
+	}
+
+	//
+	VsegmentMap[opts.Key] = sg.id
+
+	//
+	_, err = sg.writeWithId([]byte{
+		byte(MajorVersion),
+		byte(MajorVersion >> 8),
+	})
+	if err != nil {
+		err = ErrInitializeMajorVersionValue
+		return
+	}
+
+	//
+	_, err = sg.writeWithId([]byte{
+		byte(MinorVersion),
+		byte(MinorVersion >> 8),
+	})
+	if err != nil {
+		err = ErrInitializeMinorVersionValue
+		return
+	}
+
+	//
+	_, err = sg.writeWithId([]byte{
+		byte(PatchVersion),
+		byte(PatchVersion >> 8),
+	})
+	if err != nil {
+		err = ErrInitializePatchVersionValue
+		return
+	}
+
+	//
+	_, err = sg.writeWithId([]byte{
+		byte(sg.key),
+		byte(sg.key >> 8),
+		byte(sg.key >> 16),
+		byte(sg.key >> 24),
+		byte(sg.key >> 32),
+		byte(sg.key >> 40),
+		byte(sg.key >> 48),
+		byte(sg.key >> 56),
+	})
+	if err != nil {
+		err = ErrInitializeKeyValue
+		return
+	}
+
+	//
+	_, err = sg.writeWithId([]byte{
+		byte(sg.id),
+		byte(sg.id >> 8),
+		byte(sg.id >> 16),
+		byte(sg.id >> 24),
+		byte(sg.id >> 32),
+		byte(sg.id >> 40),
+		byte(sg.id >> 48),
+		byte(sg.id >> 56),
+	})
+	if err != nil {
+		err = ErrInitializeIdValue
+		return
+	}
+
+	//
+	_, err = sg.writeWithId([]byte{
+		byte(sg.size),
+		byte(sg.size >> 8),
+		byte(sg.size >> 16),
+		byte(sg.size >> 24),
+		byte(sg.size >> 32),
+		byte(sg.size >> 40),
+		byte(sg.size >> 48),
+		byte(sg.size >> 56),
+	})
+	if err != nil {
+		err = ErrInitializeSizeValue
+		return
+	}
+
+	//
+	_, err = sg.writeWithId([]byte{
+		byte(opts.Parameter),
+		byte(opts.Parameter >> 8),
+		byte(opts.Parameter >> 16),
+		byte(opts.Parameter >> 24),
+	})
+	if err != nil {
+		err = ErrInitializeParameterValue
+		return
+	}
+
+	//
+	_, err = sg.writeWithId([]byte{
+		byte(sg.offset + 8),
+		byte((sg.offset + 8) >> 8),
+		byte((sg.offset + 8) >> 16),
+		byte((sg.offset + 8) >> 24),
+		byte((sg.offset + 8) >> 32),
+		byte((sg.offset + 8) >> 40),
+		byte((sg.offset + 8) >> 48),
+		byte((sg.offset + 8) >> 56),
+	})
+	if err != nil {
+		err = ErrInitializeSizeValue
+		return
+	}
+
+	//
+	return
+}
+
+/*
+ShmInfo retrieves information about a segment map identified by a key.
+It reads data from the map and returns a Vinfo struct containing the major, minor, and patch versions, key, ID, size, flag, and offset.
+An error is returned if the map does not exist or if the data could not be read.
+*/
+func ShmInfo(key int64) (vinfo Vinfo, err error) {
+	//
+	id, ok := VsegmentMap[key]
+	if !ok {
+		err = ErrShmNotExist
+		return
+	}
+
+	//
+	vg := new(Vsegment)
+	vg.key = key
+	vg.id = id
+	vg.offset = 0
+	vg.size = defualtMinShmSize
+
+	//
+	rawInfo := make([]byte, defualtMinShmSize)
+	var count int64
+	count, err = vg.readWithId(rawInfo)
+	if count != defualtMinShmSize {
+		err = ErrShmFetchInfo
+		return
+	}
+
+	vinfo.Major = binary.LittleEndian.Uint16(rawInfo[0:2])
+	vinfo.Minor = binary.LittleEndian.Uint16(rawInfo[2:4])
+	vinfo.Patch = binary.LittleEndian.Uint16(rawInfo[4:6])
+	vinfo.Key = int64(binary.LittleEndian.Uint64(rawInfo[6:14]))
+	vinfo.Id = int64(binary.LittleEndian.Uint64(rawInfo[14:22]))
+	vinfo.Size = int64(binary.LittleEndian.Uint64(rawInfo[22:30]))
+	vinfo.Flag = int32(binary.LittleEndian.Uint32(rawInfo[30:34]))
+	vinfo.Offset = int64(binary.LittleEndian.Uint64(rawInfo[34:42]))
+
+	//
 	return
 }
