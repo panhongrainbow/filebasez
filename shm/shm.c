@@ -1,6 +1,7 @@
 #include "shm.h"
 
 /*
+    [reference Linux man page](https://man7.org/linux/man-pages/man)
     When writing processes, sometimes you may want certain values or data structures to be passed or modified between different processes.
     However, since data structures are stored in virtual memory, memory blocks between different processes are independent and
     cannot access memory locations of other processes.
