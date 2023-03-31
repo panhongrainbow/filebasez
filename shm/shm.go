@@ -55,6 +55,7 @@ const (
 	ErrShmAlreadyExist             = Error("shm already exist")
 	ErrShmNotExist                 = Error("shm not exist")
 	ErrShmFetchInfo                = Error("fetch shm info failed")
+	ErrShmFetchInt32               = Error("fetch shm int32 failed")
 	ErrExceedDefaultMaxKeyValue    = Error("exceed default max key value")
 	ErrNegativeOrZeroSize          = Error("shm size should not be negative or zero")
 	ErrInitializeMajorVersionValue = Error("initialization of major version value failed")
@@ -67,13 +68,15 @@ const (
 	ErrInitializeFlagValue         = Error("initialization of flag value failed")
 	ErrInitializeOffsetValue       = Error("initialization of offset value failed")
 	ErrInitializeTypeValue         = Error("initialization of type value failed")
+	ErrCorrectOffsetValue          = Error("correct shm offset value failed")
+	ErrShmReadingBeyond            = Error("shm reading beyond boundaries")
 )
 
 // VsegmentMap : map key to id
-var VsegmentMap map[int64]int64
+var VsegmentMap []int64
 
 func init() {
-	VsegmentMap = make(map[int64]int64, defaultMaxKeyValue)
+	VsegmentMap = make([]int64, defaultMaxKeyValue)
 }
 
 // Vsegment is a native representation of a SysV shared memory segment
@@ -370,7 +373,7 @@ func NewShm(opts Vopts) (err error) {
 	}
 
 	// Check if the segment already exists in VsegmentMap
-	if _, ok := VsegmentMap[opts.Key]; ok {
+	if shmId := VsegmentMap[opts.Key]; shmId != 0 {
 		err = ErrShmAlreadyExist
 		return
 	}
@@ -527,8 +530,8 @@ func InfoShm(key int64) (vinfo Vinfo, err error) {
 	}
 
 	// Check if the given key exists in the VsegmentMap
-	id, ok := VsegmentMap[key]
-	if !ok {
+	shmId := VsegmentMap[key]
+	if shmId == 0 {
 		err = ErrShmNotExist
 		return
 	}
@@ -536,7 +539,7 @@ func InfoShm(key int64) (vinfo Vinfo, err error) {
 	// Create a byte slice to store the raw information and read the information from the shared memory segment into it
 	vg := new(Vsegment)
 	vg.key = key
-	vg.id = id
+	vg.id = shmId
 	vg.offset = 0
 	vg.size = defualtMinShmSize
 
@@ -568,7 +571,7 @@ func InfoShm(key int64) (vinfo Vinfo, err error) {
 	return
 }
 
-func WriteOffset(key, offset int64) (vinfo Vinfo, err error) {
+func WriteOffset(key, offset int64) (err error) {
 	// Check if the value of opts.Key exceeds the default maximum allowed value
 	if key > defaultMaxKeyValue {
 		err = ErrExceedDefaultMaxKeyValue
@@ -576,8 +579,8 @@ func WriteOffset(key, offset int64) (vinfo Vinfo, err error) {
 	}
 
 	// Check if the given key exists in the VsegmentMap
-	id, ok := VsegmentMap[key]
-	if !ok {
+	shmId := VsegmentMap[key]
+	if shmId == 0 {
 		err = ErrShmNotExist
 		return
 	}
@@ -585,7 +588,7 @@ func WriteOffset(key, offset int64) (vinfo Vinfo, err error) {
 	// Create a byte slice to store the raw information and read the information from the shared memory segment into it
 	vg := new(Vsegment)
 	vg.key = key
-	vg.id = id
+	vg.id = shmId
 	vg.offset = 2 + 2 + 2 + 8 + 8 + 8 + 4 + 4
 
 	vg.size = defualtMinShmSize
@@ -594,17 +597,228 @@ func WriteOffset(key, offset int64) (vinfo Vinfo, err error) {
 	_, err = vg.writeWithId([]byte{
 		byte(offset),
 		byte(offset >> 8),
-		byte(vg.offset >> 16),
-		byte(vg.offset >> 24),
-		byte(vg.offset >> 32),
-		byte(vg.offset >> 40),
-		byte(vg.offset >> 48),
-		byte(vg.offset >> 56),
+		byte(offset >> 16),
+		byte(offset >> 24),
+		byte(offset >> 32),
+		byte(offset >> 40),
+		byte(offset >> 48),
+		byte(offset >> 56),
 	})
+
+	// If an error occurs during the operation, set the error to ErrCorrectOffsetValue
 	if err != nil {
-		err = ErrInitializeOffsetValue
+		err = ErrCorrectOffsetValue
 		return
 	}
 
+	// If the operation is successful, return without any errors
+	return
+}
+
+func ReadOffset(key int64) (offset int64, err error) {
+	// Check if the value of opts.Key exceeds the default maximum allowed value
+	if key > defaultMaxKeyValue {
+		err = ErrExceedDefaultMaxKeyValue
+		return
+	}
+
+	// Check if the given key exists in the VsegmentMap
+	shmId := VsegmentMap[key]
+	if shmId == 0 {
+		err = ErrShmNotExist
+		return
+	}
+
+	// Create a byte slice to store the raw information and read the information from the shared memory segment into it
+	vg := new(Vsegment)
+	vg.key = key
+	vg.id = shmId
+	vg.offset = 0
+	vg.size = defualtMinShmSize
+
+	// Create a byte slice to store the raw information and read the information from the shared memory segment into it
+	rawInfo := make([]byte, defualtMinShmSize)
+	var count int64
+	count, err = vg.readWithId(rawInfo)
+	if count != defualtMinShmSize {
+		err = ErrShmFetchInfo
+		return
+	}
+
+	// Use binary.LittleEndian to extract offset from the raw byte slice
+	offset = int64(binary.LittleEndian.Uint64(rawInfo[38:46])) // Extract the Offset value
+
+	// Return the offset value
+	return
+}
+
+func ReadSize(key int64) (shmSize int64, err error) {
+	// Check if the value of opts.Key exceeds the default maximum allowed value
+	if key > defaultMaxKeyValue {
+		err = ErrExceedDefaultMaxKeyValue
+		return
+	}
+
+	// Check if the given key exists in the VsegmentMap
+	shmId := VsegmentMap[key]
+	if shmId == 0 {
+		err = ErrShmNotExist
+		return
+	}
+
+	// Create a byte slice to store the raw information and read the information from the shared memory segment into it
+	vg := new(Vsegment)
+	vg.key = key
+	vg.id = shmId
+	vg.offset = 0
+	vg.size = defualtMinShmSize
+
+	// Create a byte slice to store the raw information and read the information from the shared memory segment into it
+	rawInfo := make([]byte, defualtMinShmSize)
+	var count int64
+	count, err = vg.readWithId(rawInfo)
+	if count != defualtMinShmSize {
+		err = ErrShmFetchInfo
+		return
+	}
+
+	// Use binary.LittleEndian to extract size from the raw byte slice
+	shmSize = int64(binary.LittleEndian.Uint64(rawInfo[22:30])) // Extract the Size value
+
+	// Return the offset value
+	return
+}
+
+func DeleteShm(key int64) (err error) {
+	// Check if the value of opts.Key exceeds the default maximum allowed value
+	if key > defaultMaxKeyValue {
+		err = ErrExceedDefaultMaxKeyValue
+		return
+	}
+
+	// Check if the given key exists in the VsegmentMap
+	shmId := VsegmentMap[key]
+	if shmId == 0 {
+		err = ErrShmNotExist
+		return
+	}
+
+	// Close the shared memory segment using the corresponding shared memory ID
+	_, err = C.sysv_shm_close(C.int(shmId))
+
+	// Return the error value
+	return
+}
+
+func WriteInt32s(key int64, values ...int32) (err error) {
+	// Check if the value of opts.Key exceeds the default maximum allowed value
+	if key > defaultMaxKeyValue {
+		err = ErrExceedDefaultMaxKeyValue
+		return
+	}
+
+	// Check if the given key exists in the VsegmentMap
+	shmId := VsegmentMap[key]
+	if shmId == 0 {
+		err = ErrShmNotExist
+		return
+	}
+
+	//
+	var shmOffset int64
+	shmOffset, err = ReadOffset(key)
+	if err != nil {
+		return
+	}
+
+	//
+	var shmSize int64
+	shmSize, err = ReadSize(key)
+	if err != nil {
+		return
+	}
+
+	//
+	vg := new(Vsegment)
+	vg.key = key
+	vg.id = VsegmentMap[key]
+	vg.offset = shmOffset
+	vg.size = shmSize
+
+	// Write value information to the shared memory segment
+	for i := 0; i < len(values); i++ {
+		_, err = vg.writeWithId([]byte{
+			byte(values[i]),
+			byte(values[i] >> 8),
+			byte(values[i] >> 16),
+			byte(values[i] >> 24),
+		})
+	}
+
+	//
+	err = WriteOffset(1, vg.offset)
+	if err != nil {
+		return
+	}
+
+	//
+	return
+}
+
+func ReadInt32s(key, shift int64, values []int32) (err error) {
+	// Check if the value of opts.Key exceeds the default maximum allowed value
+	if key > defaultMaxKeyValue {
+		err = ErrExceedDefaultMaxKeyValue
+		return
+	}
+
+	// Check if the given key exists in the VsegmentMap
+	shmId := VsegmentMap[key]
+	if shmId == 0 {
+		err = ErrShmNotExist
+		return
+	}
+
+	//
+	var shmOffset int64
+	shmOffset, err = ReadOffset(key)
+	if err != nil {
+		return
+	}
+
+	//
+	if shift+defualtMinShmSize > shmOffset {
+		err = ErrShmReadingBeyond
+		return
+	}
+
+	//
+	var shmSize int64
+	shmSize, err = ReadSize(key)
+	if err != nil {
+		return
+	}
+
+	//
+	vg := new(Vsegment)
+	vg.key = key
+	vg.id = VsegmentMap[key]
+	vg.offset = shift + defualtMinShmSize
+	vg.size = shmSize
+
+	//
+	for i := 0; i < len(values); i++ {
+		tmp := make([]byte, 4)
+		var count int64
+		count, err = vg.readWithId(tmp)
+		if count != 4 {
+			err = ErrShmFetchInt32
+			return
+		}
+
+		values[i] = int32(binary.LittleEndian.Uint32(tmp)) // Extract the flag value
+	}
+
+	//
 	return
 }
