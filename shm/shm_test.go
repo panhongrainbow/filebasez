@@ -154,9 +154,11 @@ func Test_Check_Shm_Basic_Function(t *testing.T) {
 }
 
 /*
- */
+Test_Check_Shm_Extension_Function checks the extension functionalities of a data segment implementation,
+including testing of many functions: NewShm,InfoShm,WriteOffset,ReadOffset,ReadSize and DeleteShm.
+*/
 func Test_Check_Shm_Extension_Function(t *testing.T) {
-	//
+	// Creates shared memory segment, verifying returned information and deleting segment
 	t.Run("Detailed inspection of every aspect in InfoShm function", func(t *testing.T) {
 		// Create a new shared memory segment with Key=1 and Size=1024
 		opts := Vopts{
@@ -194,7 +196,7 @@ func Test_Check_Shm_Extension_Function(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	//
+	// Test WriteOffset function by creating shared memory segment, writing offset value and verifying information
 	t.Run("Detailed inspection of every aspect in WriteOffset function", func(t *testing.T) {
 		// Create a new shared memory segment with Key=1 and Size=1024
 		opts := Vopts{
@@ -222,7 +224,7 @@ func Test_Check_Shm_Extension_Function(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	//
+	// Test ReadOffset function by creating shared memory segment, writing offset value, reading and verifying offset value
 	t.Run("Detailed inspection of every aspect in ReadOffset function", func(t *testing.T) {
 		// Create a new shared memory segment with Key=1 and Size=1024
 		opts := Vopts{
@@ -235,7 +237,7 @@ func Test_Check_Shm_Extension_Function(t *testing.T) {
 		// Call the WriteOffset function with a specific offset value (9223372036854775807)
 		err = WriteOffset(1, 9223372036854775807) // <<<<< <<<<< <<<<< assistant test sample
 
-		//
+		// Read the offset value from the shared memory segment
 		var offset int64
 		offset, err = ReadOffset(1) // <<<<< <<<<< <<<<< <<<<< <<<<< main test sample
 		require.NoError(t, err)
@@ -246,7 +248,7 @@ func Test_Check_Shm_Extension_Function(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	//
+	// Test WriteInt32s function by creating shared memory segment, writing and reading int32 values
 	t.Run("Detailed inspection of every aspect in WriteInt32s function", func(t *testing.T) {
 		// Create shared memory segment with key=1 and size=1024 bytes
 		opts := Vopts{
@@ -271,7 +273,7 @@ func Test_Check_Shm_Extension_Function(t *testing.T) {
 		var offset int64
 		offset, err = ReadOffset(1)
 		require.NoError(t, err)
-		require.Equal(t, int64(defualtMinShmSize+20), offset)
+		require.Equal(t, int64(DefualtMinShmSize+20), offset)
 
 		// Read five int32 values from the shared memory segment starting at offset 0 and ensure they are the values we wrote
 		values := make([]int32, 5)
@@ -286,7 +288,7 @@ func Test_Check_Shm_Extension_Function(t *testing.T) {
 		// Read the current offset value from the shared memory segment and ensure it is (defaultMinShmSize+40)
 		offset, err = ReadOffset(1)
 		require.NoError(t, err)
-		require.Equal(t, int64(defualtMinShmSize+40), offset)
+		require.Equal(t, int64(DefualtMinShmSize+40), offset)
 
 		// Read five int32 values from the shared memory segment starting at offset 20 and ensure they are the values we wrote
 		values = make([]int32, 5)

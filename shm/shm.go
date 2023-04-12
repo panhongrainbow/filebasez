@@ -41,7 +41,7 @@ const (
 	defautlShmFlag       = StatusIpcCreate | StatusIpcExclusive
 	defaultShmPermission = 0600
 	defaultMaxKeyValue   = 1 << 10
-	defualtMinShmSize    = 2 + 2 + 2 + 8 + 8 + 8 + 4 + 4 + 8 + 4
+	DefualtMinShmSize    = 2 + 2 + 2 + 8 + 8 + 8 + 4 + 4 + 8 + 4
 )
 
 const (
@@ -541,13 +541,13 @@ func InfoShm(key int64) (vinfo Vinfo, err error) {
 	vg.key = key
 	vg.id = shmId
 	vg.offset = 0
-	vg.size = defualtMinShmSize
+	vg.size = DefualtMinShmSize
 
 	// Create a byte slice to store the raw information and read the information from the shared memory segment into it
-	rawInfo := make([]byte, defualtMinShmSize)
+	rawInfo := make([]byte, DefualtMinShmSize)
 	var count int64
 	count, err = vg.readWithId(rawInfo)
-	if count != defualtMinShmSize {
+	if count != DefualtMinShmSize {
 		err = ErrShmFetchInfo
 		return
 	}
@@ -591,7 +591,7 @@ func WriteOffset(key, offset int64) (err error) {
 	vg.id = shmId
 	vg.offset = 2 + 2 + 2 + 8 + 8 + 8 + 4 + 4
 
-	vg.size = defualtMinShmSize
+	vg.size = DefualtMinShmSize
 
 	// Write offset information to the shared memory segment
 	_, err = vg.writeWithId([]byte{
@@ -634,13 +634,13 @@ func ReadOffset(key int64) (offset int64, err error) {
 	vg.key = key
 	vg.id = shmId
 	vg.offset = 0
-	vg.size = defualtMinShmSize
+	vg.size = DefualtMinShmSize
 
 	// Create a byte slice to store the raw information and read the information from the shared memory segment into it
-	rawInfo := make([]byte, defualtMinShmSize)
+	rawInfo := make([]byte, DefualtMinShmSize)
 	var count int64
 	count, err = vg.readWithId(rawInfo)
-	if count != defualtMinShmSize {
+	if count != DefualtMinShmSize {
 		err = ErrShmFetchInfo
 		return
 	}
@@ -671,13 +671,13 @@ func ReadSize(key int64) (shmSize int64, err error) {
 	vg.key = key
 	vg.id = shmId
 	vg.offset = 0
-	vg.size = defualtMinShmSize
+	vg.size = DefualtMinShmSize
 
 	// Create a byte slice to store the raw information and read the information from the shared memory segment into it
-	rawInfo := make([]byte, defualtMinShmSize)
+	rawInfo := make([]byte, DefualtMinShmSize)
 	var count int64
 	count, err = vg.readWithId(rawInfo)
-	if count != defualtMinShmSize {
+	if count != DefualtMinShmSize {
 		err = ErrShmFetchInfo
 		return
 	}
@@ -710,6 +710,11 @@ func DeleteShm(key int64) (err error) {
 	return
 }
 
+/*
+WriteInt32s writes int32 values to a shared memory segment based on a given key, with error handling for exceeding maximum key value and non-existent keys.
+It utilizes the VsegmentMap to retrieve the shared memory ID and writes the values in little-endian format.
+Finally, it updates the offset value for the given key.
+*/
 func WriteInt32s(key int64, values ...int32) (err error) {
 	// Check if the value of opts.Key exceeds the default maximum allowed value
 	if key > defaultMaxKeyValue {
@@ -756,7 +761,7 @@ func WriteInt32s(key int64, values ...int32) (err error) {
 	}
 
 	//
-	err = WriteOffset(1, vg.offset)
+	err = WriteOffset(key, vg.offset)
 	if err != nil {
 		return
 	}
@@ -765,6 +770,10 @@ func WriteInt32s(key int64, values ...int32) (err error) {
 	return
 }
 
+/*
+ReadInt32s reads a slice of 32-bit integers from a shared memory segment, specified by a given key and an offset.
+It reads each 32-bit integer from the shared memory segment using vg.readWithId and stores them in the input values slice.
+*/
 func ReadInt32s(key, shift int64, values []int32) (err error) {
 	// Check if the value of opts.Key exceeds the default maximum allowed value
 	if key > defaultMaxKeyValue {
@@ -787,7 +796,7 @@ func ReadInt32s(key, shift int64, values []int32) (err error) {
 	}
 
 	//
-	if shift+defualtMinShmSize > shmOffset {
+	if shift+DefualtMinShmSize > shmOffset {
 		err = ErrShmReadingBeyond
 		return
 	}
@@ -803,7 +812,7 @@ func ReadInt32s(key, shift int64, values []int32) (err error) {
 	vg := new(Vsegment)
 	vg.key = key
 	vg.id = VsegmentMap[key]
-	vg.offset = shift + defualtMinShmSize
+	vg.offset = shift + DefualtMinShmSize
 	vg.size = shmSize
 
 	//
