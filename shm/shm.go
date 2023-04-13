@@ -716,6 +716,21 @@ It utilizes the VsegmentMap to retrieve the shared memory ID and writes the valu
 Finally, it updates the offset value for the given key.
 */
 func WriteInt32s(key int64, values ...int32) (err error) {
+	//
+	var shmOffset int64
+	shmOffset, err = ReadOffset(key)
+	if err != nil {
+		return
+	}
+
+	//
+	err = OverwriteInt32sByShift(key, shmOffset, values...)
+
+	//
+	return
+}
+
+func OverwriteInt32sByShift(key int64, shmOffset int64, values ...int32) (err error) {
 	// Check if the value of opts.Key exceeds the default maximum allowed value
 	if key > defaultMaxKeyValue {
 		err = ErrExceedDefaultMaxKeyValue
@@ -730,11 +745,11 @@ func WriteInt32s(key int64, values ...int32) (err error) {
 	}
 
 	//
-	var shmOffset int64
+	/*var shmOffset int64
 	shmOffset, err = ReadOffset(key)
 	if err != nil {
 		return
-	}
+	}*/
 
 	//
 	var shmSize int64
@@ -796,6 +811,7 @@ func ReadInt32s(key, shift int64, values []int32) (err error) {
 	}
 
 	//
+	//if shift > shmOffset {
 	if shift+DefualtMinShmSize > shmOffset {
 		err = ErrShmReadingBeyond
 		return
@@ -812,7 +828,7 @@ func ReadInt32s(key, shift int64, values []int32) (err error) {
 	vg := new(Vsegment)
 	vg.key = key
 	vg.id = VsegmentMap[key]
-	vg.offset = shift + DefualtMinShmSize
+	vg.offset = DefualtMinShmSize + shift
 	vg.size = shmSize
 
 	//

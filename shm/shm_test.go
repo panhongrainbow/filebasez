@@ -208,6 +208,7 @@ func Test_Check_Shm_Extension_Function(t *testing.T) {
 
 		// Call the WriteOffset function with a specific offset value (9223372036854775807)
 		err = WriteOffset(1, 9223372036854775807) // <<<<< <<<<< <<<<< <<<<< <<<<< main test sample
+		require.NoError(t, err)
 
 		// Get information about the shared memory segment with Key=1
 		var info Vinfo
