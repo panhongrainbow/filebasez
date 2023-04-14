@@ -26,7 +26,7 @@ func Test_Check_SpeedyArrayInt32(t *testing.T) {
 
 	//
 	defer func() {
-		array = SpeedyArrayInt32{}
+		array = SpdArrayInt32{}
 		err = DeleteSpeedyArrayInt32(testShmKey)
 		require.NoError(t, err)
 	}()

@@ -87,6 +87,7 @@ type Vsegment struct {
 	offset int64
 }
 
+// Vopts is the required parameter for generating a SysV shared memory segment
 type Vopts struct {
 	// These values are user-defined
 	Key  int64
@@ -96,6 +97,7 @@ type Vopts struct {
 	parameter os.FileMode
 }
 
+// Vinfo contains detailed information about a SysV shared memory segment
 type Vinfo struct {
 	Major     uint16
 	Minor     uint16
@@ -571,6 +573,11 @@ func InfoShm(key int64) (vinfo Vinfo, err error) {
 	return
 }
 
+/*
+WriteOffset writes the offset information to the shared memory segment.
+Using this function loses 900 nanoseconds.
+When dealing with locks, it will be optimized.
+*/
 func WriteOffset(key, offset int64) (err error) {
 	// Check if the value of opts.Key exceeds the default maximum allowed value
 	if key > defaultMaxKeyValue {
@@ -615,6 +622,11 @@ func WriteOffset(key, offset int64) (err error) {
 	return
 }
 
+/*
+ReadOffset reads the offset information from the shared memory segment.
+Using this function loses 1000 nanoseconds.
+When dealing with locks, it will be optimized.
+*/
 func ReadOffset(key int64) (offset int64, err error) {
 	// Check if the value of opts.Key exceeds the default maximum allowed value
 	if key > defaultMaxKeyValue {
@@ -652,6 +664,11 @@ func ReadOffset(key int64) (offset int64, err error) {
 	return
 }
 
+/*
+ReadSize reads the offset information from the shared memory segment.
+Using this function loses 1000 nanoseconds.
+When dealing with locks, it will be optimized.
+*/
 func ReadSize(key int64) (shmSize int64, err error) {
 	// Check if the value of opts.Key exceeds the default maximum allowed value
 	if key > defaultMaxKeyValue {
@@ -689,6 +706,9 @@ func ReadSize(key int64) (shmSize int64, err error) {
 	return
 }
 
+/*
+DeleteShm checks key value and existence in VsegmentMap, closes shared memory segment using ID.
+*/
 func DeleteShm(key int64) (err error) {
 	// Check if the value of opts.Key exceeds the default maximum allowed value
 	if key > defaultMaxKeyValue {
@@ -716,20 +736,24 @@ It utilizes the VsegmentMap to retrieve the shared memory ID and writes the valu
 Finally, it updates the offset value for the given key.
 */
 func WriteInt32s(key int64, values ...int32) (err error) {
-	//
+	// Read the offset value for the given key
 	var shmOffset int64
 	shmOffset, err = ReadOffset(key)
 	if err != nil {
 		return
 	}
 
-	//
+	// Overwrite the int32 values at the given offset by shifting them
 	err = OverwriteInt32sByShift(key, shmOffset, values...)
 
-	//
+	// Return the error value
 	return
 }
 
+/*
+OverwriteInt32sByShift writes int32 values to a shared memory segment with a given key and offset.
+It checks if the key is valid and updates the offset value after writing.
+*/
 func OverwriteInt32sByShift(key int64, shmOffset int64, values ...int32) (err error) {
 	// Check if the value of opts.Key exceeds the default maximum allowed value
 	if key > defaultMaxKeyValue {
@@ -744,21 +768,21 @@ func OverwriteInt32sByShift(key int64, shmOffset int64, values ...int32) (err er
 		return
 	}
 
-	//
+	// move this area to the WriteInt32s function
 	/*var shmOffset int64
 	shmOffset, err = ReadOffset(key)
 	if err != nil {
 		return
 	}*/
 
-	//
+	// Read the size value for the given key
 	var shmSize int64
 	shmSize, err = ReadSize(key)
 	if err != nil {
 		return
 	}
 
-	//
+	// Create a new Vsegment instance with the given key, ID, offset and size values
 	vg := new(Vsegment)
 	vg.key = key
 	vg.id = VsegmentMap[key]
@@ -775,13 +799,13 @@ func OverwriteInt32sByShift(key int64, shmOffset int64, values ...int32) (err er
 		})
 	}
 
-	//
+	// Update the offset value for the given key
 	err = WriteOffset(key, vg.offset)
 	if err != nil {
 		return
 	}
 
-	//
+	// Return the error value
 	return
 }
 
@@ -803,35 +827,34 @@ func ReadInt32s(key, shift int64, values []int32) (err error) {
 		return
 	}
 
-	//
+	// Read the offset value for the given key
 	var shmOffset int64
 	shmOffset, err = ReadOffset(key)
 	if err != nil {
 		return
 	}
 
-	//
-	//if shift > shmOffset {
+	// Check if the shift value exceeds the offset value
 	if shift+DefualtMinShmSize > shmOffset {
 		err = ErrShmReadingBeyond
 		return
 	}
 
-	//
+	// Read the size value for the given key
 	var shmSize int64
 	shmSize, err = ReadSize(key)
 	if err != nil {
 		return
 	}
 
-	//
+	// Create a new Vsegment instance with the given key, ID, offset and size values
 	vg := new(Vsegment)
 	vg.key = key
 	vg.id = VsegmentMap[key]
 	vg.offset = DefualtMinShmSize + shift
 	vg.size = shmSize
 
-	//
+	// Read value information from the shared memory segment and store it in the values slice
 	for i := 0; i < len(values); i++ {
 		tmp := make([]byte, 4)
 		var count int64
@@ -841,9 +864,9 @@ func ReadInt32s(key, shift int64, values []int32) (err error) {
 			return
 		}
 
-		values[i] = int32(binary.LittleEndian.Uint32(tmp)) // Extract the flag value
+		values[i] = int32(binary.LittleEndian.Uint32(tmp)) // Extract the value
 	}
 
-	//
+	// Return the error value
 	return
 }
