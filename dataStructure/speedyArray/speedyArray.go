@@ -4,13 +4,17 @@ import (
 	"github.com/panhongrainbow/filebasez/shm"
 )
 
+// Define the default capacity for the shiftMap
 const (
 	defaultOverlapsFirstElement = 5
 )
 
+// Define the error messages
 const (
 	ErrOverwriteBeyondSize = Error("overwrite failed because beyond shm size")
 	ErrNotAlignWithMemory  = Error("not align with the memory size boundary")
+	ErrTruncateData        = Error("data is truncated")
+	ErrWasteMemorySpace    = Error("waste memory space")
 )
 
 // Error Defines a new Error type as a string
@@ -90,7 +94,7 @@ func (array SpdArrayInt32) AppendArrayInt32(elements ...int32) (err error) {
 	copy(newElements, elements)
 
 	// write the newElements to the shared memory segment with the given key
-	err = shm.WriteInt32s(array.opts.ShmKey, newElements...)
+	err = shm.AppendInt32s(array.opts.ShmKey, newElements...)
 	if err != nil {
 		return
 	}
@@ -106,70 +110,102 @@ func (array SpdArrayInt32) AppendArrayInt32(elements ...int32) (err error) {
 	offset := shmOffset - int64(array.opts.width*4)
 
 	// append the new offset value to the shiftMap for the first element
-	array.shiftMap[elements[0]] = append(array.shiftMap[elements[0]], offset)
+	array.shiftMap[elements[0]] = append(array.shiftMap[elements[0]], offset-shm.DefualtMinShmSize)
+
+	// Check if the elements are truncated
+	if len(elements) > int(array.opts.width) {
+		err = ErrTruncateData
+		return
+	}
 
 	// return any error that occurred
 	return
 }
 
-// OverwriteArrayInt32ByShift overwrites a shared memory array with given elements at a specified shift, checking for alignment and size errors.
-func (array SpdArrayInt32) OverwriteArrayInt32ByShift(shmShift int64, elements ...int32) (err error) {
-	// Read the shared memory size
-	var shmSize int64
-	shmSize, err = shm.ReadSize(array.opts.ShmKey)
-	if shmShift > shmSize {
-		err = ErrOverwriteBeyondSize
+/*
+Unique overwrites a shared memory array with given elements
+and maintains the uniqueness of the first element in the whole array.
+*/
+func (array SpdArrayInt32) Unique(elements ...int32) (err error) {
+	// check if there are any elements to append
+	if len(elements) <= 0 {
 		return
 	}
 
-	// Check if the shift is aligned with memory
-	shouldAlign := (shmShift - shm.DefualtMinShmSize) % int64(4*array.opts.width)
-	if shouldAlign != 0 {
-		err = ErrNotAlignWithMemory
-		return
+	/*
+		Check if the shiftMap for the first element is nil.
+		If so, create a new int64 slice with capacity 5 for the first element.
+		It will alter the shm offset value.
+	*/
+	if array.shiftMap[elements[0]] == nil {
+		// Create a new int64 slice with capacity 5 for the first element
+		array.shiftMap[elements[0]] = make([]int64, 0, 5)
+
+		// Append the new elements to the shared memory
+		err = array.AppendArrayInt32(elements...)
 	}
 
-	// Overwrite the shared memory with the given elements at the given shift
-	err = shm.OverwriteInt32sByShift(array.opts.ShmKey, shmShift, elements...)
-	if err != nil {
-		return
+	/*
+		Check if the shiftMap for the first element is nil.
+		If not, overwrite the shared memory with the given elements.
+		It won't alter the shm offset value.
+	*/
+	if len(array.shiftMap[elements[0]]) >= 1 {
+		/*
+			Find the offset values for the first element.
+			There should be only one offset value.
+		*/
+		shmShift := array.shiftMap[elements[0]][0]
+		// Overwrite the shared memory with the given elements
+		err = shm.OverwriteOrAppendInt32sByShift(array.opts.ShmKey, shm.DefualtMinShmSize+shmShift, false, elements...)
+		if err != nil {
+			// If first element is not unique, return ErrWasteMemorySpace
+			if len(array.shiftMap[elements[0]]) > 1 {
+				err = ErrWasteMemorySpace
+			}
+		}
 	}
 
-	// Return any errors
+	// Return any error that occurred
 	return
 }
 
-func (array SpdArrayInt32) ReadArrayInt32ByShift(shmShift int64) (elements []int32, err error) {
+// ReadRowInInt32ByShift obtains an int32 array from the shared memory space by an offset.
+func (array SpdArrayInt32) ReadRowInInt32ByShift(shmShift int64) (elements []int32, err error) {
 	elements = make([]int32, array.opts.width)
-	err = shm.ReadInt32s(array.opts.ShmKey, shmShift, elements)
+	err = shm.ReadRowInInt32s(array.opts.ShmKey, shmShift, elements)
 	return
 }
 
-func (array SpdArrayInt32) ReadArrayInt32ByElement(firstElement int32) (elements [][]int32, err error) {
-
-	//
+// ReadRowInInt32ByFirstElement obtains an int32 array from the shared memory space by the first element.
+func (array SpdArrayInt32) ReadRowInInt32ByFirstElement(firstElement int32) (elements [][]int32, err error) {
+	// Check if shiftMap has an entry for firstElement. If not, creates an empty slice for it.
 	if array.shiftMap[firstElement] == nil {
-		//
+		// Create an empty slice if no entry exists
 		array.shiftMap[firstElement] = make([]int64, 0, 5)
 	}
 
-	//
+	// Check if the shiftMap for the firstElement is empty. If so, returns an empty slice
 	if len(array.shiftMap[firstElement]) <= 0 {
 		return
 	}
 
-	//
-	elements = make([][]int32, len(array.shiftMap[firstElement]))
+	// Create a slice of slices to hold the retrieved int32 arrays
+	elements = make([][]int32, 0, len(array.shiftMap[firstElement]))
 
-	//
+	// Read the int32 arrays for all offsets in shiftMap[firstElement] and appends them to elements
 	for i := 0; i < len(array.shiftMap[firstElement]); i++ {
-		//
+		// Read int32 array at offset and handle any error
 		var raw []int32
-		raw, err = array.ReadArrayInt32ByShift(array.shiftMap[firstElement][i])
+		// Read the row in int32s array by shift
+		raw, err = array.ReadRowInInt32ByShift(array.shiftMap[firstElement][i])
+		if err != nil {
+			return
+		}
 		elements = append(elements, raw)
 
 	}
 
-	//
+	// Return the elements and any error
 	return
 }

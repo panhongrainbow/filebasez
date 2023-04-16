@@ -16,17 +16,29 @@ func Test_Check_Shm_Basic_Function(t *testing.T) {
 		It uses the Go testing package to check for errors and expected values.
 	*/
 	t.Run("test for basic functions in valid cases", func(t *testing.T) {
-		// Set the options for the Vopts struct with key=1 and size=1024
+		// The testShmKey is the shared memory key for testing
+		var testShmKey int64 = 2
+
+		// Set the options for the Vopts struct with key=testShmKey and size=1024
 		opts := Vopts{
-			Key:  1,
+			Key:  testShmKey,
 			Size: 1024,
 		}
 
 		// Create a new segment with the specified options and return its id and any errors
 		sg, err := newWithReturnId(opts)
+
+		// Delete the segment with the specified id and check for any errors
+		defer func() {
+			err1 := sg.deleteWithId()
+			require.NoError(t, err1)
+		}()
+
+		// Verify the shared memory segment was created successfully
 		require.NoError(t, err)
-		// Check that the segment's key matches the specified key (1) and its id is greater than 0
-		require.Equal(t, int64(1), sg.key)
+
+		// Check that the segment's key matches the specified key (testShmKey) and its id is greater than 0
+		require.Equal(t, testShmKey, sg.key)
 		require.Greater(t, sg.id, int64(0))
 
 		// Write the bytes "abcde" to the segment with the specified id and return the length and any errors
@@ -51,10 +63,6 @@ func Test_Check_Shm_Basic_Function(t *testing.T) {
 		require.Equal(t, byte('c'), data[2])
 		require.Equal(t, byte('d'), data[3])
 		require.Equal(t, byte('e'), data[4])
-
-		// Delete the segment with the specified id and check for any errors
-		err = sg.deleteWithId()
-		require.NoError(t, err)
 	})
 
 	// Test basic functionality in invalid cases
@@ -160,24 +168,35 @@ including testing of many functions: NewShm,InfoShm,WriteOffset,ReadOffset,ReadS
 func Test_Check_Shm_Extension_Function(t *testing.T) {
 	// Creates shared memory segment, verifying returned information and deleting segment
 	t.Run("Detailed inspection of every aspect in InfoShm function", func(t *testing.T) {
-		// Create a new shared memory segment with Key=1 and Size=1024
+		// The testShmKey is the shared memory key for testing
+		var testShmKey int64 = 3
+
+		// Create a new shared memory segment with Key=testShmKey and Size=1024
 		opts := Vopts{
-			Key:  1,
+			Key:  testShmKey,
 			Size: 1024,
 		}
 		err := NewShm(opts)
+
+		// Delete the shared memory segment with Key=testShmKey
+		defer func() {
+			err1 := DeleteShm(testShmKey) // <<<<< <<<<< <<<<< assistant test sample
+			require.NoError(t, err1)
+		}()
+
+		// Verify that the shared memory segment was created successfully
 		require.NoError(t, err)
 
-		// Get information about the shared memory segment with Key=1
+		// Get information about the shared memory segment with Key=testShmKey
 		var info Vinfo
-		info, err = InfoShm(1) // <<<<< <<<<< <<<<< <<<<< <<<<< main test sample
+		info, err = InfoShm(testShmKey) // <<<<< <<<<< <<<<< <<<<< <<<<< main test sample
 		require.NoError(t, err)
 
 		// Verify the information returned by InfoShm()
 		require.Equal(t, uint16(1), info.Major)
 		require.Equal(t, uint16(2), info.Minor)
 		require.Equal(t, uint16(3), info.Patch)
-		require.Equal(t, int64(1), info.Key)
+		require.Equal(t, testShmKey, info.Key)
 		require.NotEqual(t, int64(0), info.Id)
 		require.Equal(t, int64(1024), info.Size)
 
@@ -190,110 +209,123 @@ func Test_Check_Shm_Extension_Function(t *testing.T) {
 		require.Equal(t, int8(0), info.Parameter[3])
 		require.Equal(t, int64(50), info.Offset)
 		require.Equal(t, int32(0), info.Type)
-
-		// Delete the shared memory segment with Key=1
-		err = DeleteShm(1) // <<<<< <<<<< <<<<< assistant test sample
-		require.NoError(t, err)
 	})
 
 	// Test WriteOffset function by creating shared memory segment, writing offset value and verifying information
 	t.Run("Detailed inspection of every aspect in WriteOffset function", func(t *testing.T) {
-		// Create a new shared memory segment with Key=1 and Size=1024
+		// The testShmKey is the shared memory key for testing
+		var testShmKey int64 = 4
+
+		// Create a new shared memory segment with Key=testShmKey and Size=1024
 		opts := Vopts{
-			Key:  1,
+			Key:  testShmKey,
 			Size: 1024,
 		}
 		err := NewShm(opts) // <<<<< <<<<< <<<<< assistant test sample
+
+		// Delete the shared memory segment with Key=testShmKey
+		defer func() {
+			err1 := DeleteShm(testShmKey) // <<<<< <<<<< <<<<< assistant test sample
+			require.NoError(t, err1)
+		}()
+
+		// Verify that the shared memory segment was created successfully
 		require.NoError(t, err)
 
 		// Call the WriteOffset function with a specific offset value (9223372036854775807)
-		err = WriteOffset(1, 9223372036854775807) // <<<<< <<<<< <<<<< <<<<< <<<<< main test sample
+		err = WriteOffset(testShmKey, 9223372036854775807) // <<<<< <<<<< <<<<< <<<<< <<<<< main test sample
 		require.NoError(t, err)
 
-		// Get information about the shared memory segment with Key=1
+		// Get information about the shared memory segment with Key=testShmKey
 		var info Vinfo
-		info, err = InfoShm(1) // <<<<< <<<<< <<<<< assistant test sample
+		info, err = InfoShm(testShmKey) // <<<<< <<<<< <<<<< assistant test sample
 		require.NoError(t, err)
 
 		// Verify the information returned by InfoShm()
 		require.Equal(t, int8(0), info.Parameter[3])
-		info, _ = InfoShm(1)
+		info, _ = InfoShm(testShmKey)
 		require.Equal(t, int64(9223372036854775807), info.Offset)
-
-		// Delete the shared memory segment with Key=1
-		err = DeleteShm(1) // <<<<< <<<<< <<<<< assistant test sample
-		require.NoError(t, err)
 	})
 
 	// Test ReadOffset function by creating shared memory segment, writing offset value, reading and verifying offset value
 	t.Run("Detailed inspection of every aspect in ReadOffset function", func(t *testing.T) {
-		// Create a new shared memory segment with Key=1 and Size=1024
+		// The testShmKey is the shared memory key for testing
+		var testShmKey int64 = 5
+
+		// Create a new shared memory segment with Key=testShmKey and Size=1024
 		opts := Vopts{
-			Key:  1,
+			Key:  testShmKey,
 			Size: 1024,
 		}
 		err := NewShm(opts) // <<<<< <<<<< <<<<< assistant test sample
+
+		// Delete the shared memory segment with Key=testShmKey
+		defer func() {
+			err1 := DeleteShm(testShmKey) // <<<<< <<<<< <<<<< assistant test sample
+			require.NoError(t, err1)
+		}()
+
+		// Verify that the shared memory segment was created successfully
 		require.NoError(t, err)
 
 		// Call the WriteOffset function with a specific offset value (9223372036854775807)
-		err = WriteOffset(1, 9223372036854775807) // <<<<< <<<<< <<<<< assistant test sample
+		err = WriteOffset(testShmKey, 9223372036854775807) // <<<<< <<<<< <<<<< assistant test sample
 
 		// Read the offset value from the shared memory segment
 		var offset int64
-		offset, err = ReadOffset(1) // <<<<< <<<<< <<<<< <<<<< <<<<< main test sample
+		offset, err = ReadOffset(testShmKey) // <<<<< <<<<< <<<<< <<<<< <<<<< main test sample
 		require.NoError(t, err)
 		require.Equal(t, int64(9223372036854775807), offset)
-
-		// Delete the shared memory segment with Key=1
-		err = DeleteShm(1) // <<<<< <<<<< <<<<< assistant test sample
-		require.NoError(t, err)
 	})
 
-	// Test WriteInt32s function by creating shared memory segment, writing and reading int32 values
-	t.Run("Detailed inspection of every aspect in WriteInt32s function", func(t *testing.T) {
-		// Create shared memory segment with key=1 and size=1024 bytes
+	// Test AppendInt32s function by creating shared memory segment, writing and reading int32 values
+	t.Run("Detailed inspection of every aspect in AppendInt32s function", func(t *testing.T) {
+		// The testShmKey is the shared memory key for testing
+		var testShmKey int64 = 6
+
+		// Create shared memory segment with key=testShmKey and size=1024 bytes
 		opts := Vopts{
-			Key:  1,
+			Key:  testShmKey,
 			Size: 1024,
 		}
 		err := NewShm(opts) // <<<<< <<<<< <<<<< assistant test sample
 		require.NoError(t, err)
 
-		// Defer deleting the shared memory segment with key=1 until the end of the function
+		// Defer deleting the shared memory segment with key=testShmKey until the end of the function
 		defer func() {
-			// Delete the shared memory segment with Key=1
-			err = DeleteShm(1) // <<<<< <<<<< <<<<< assistant test sample
+			// Delete the shared memory segment with Key=testShmKey
+			err = DeleteShm(testShmKey) // <<<<< <<<<< <<<<< assistant test sample
 			require.NoError(t, err)
 		}()
 
 		// Write five int32 values to the shared memory segment starting at offset (defaultMinShmSize + 0)
-		err = WriteInt32s(1, 1, 2, 3, 4, 5)
+		err = AppendInt32s(testShmKey, 1, 2, 3, 4, 5)
 		require.NoError(t, err)
 
 		// Read the current offset value from the shared memory segment and ensure it is (defaultMinShmSize+20)
 		var offset int64
-		offset, err = ReadOffset(1)
+		offset, err = ReadOffset(testShmKey)
 		require.NoError(t, err)
 		require.Equal(t, int64(DefualtMinShmSize+20), offset)
 
 		// Read five int32 values from the shared memory segment starting at offset 0 and ensure they are the values we wrote
 		values := make([]int32, 5)
-		err = ReadInt32s(1, 0, values)
+		err = ReadRowInInt32s(testShmKey, 0, values)
 		require.NoError(t, err)
 		require.Equal(t, []int32{1, 2, 3, 4, 5}, values)
 
 		// Write another five int32 values to the shared memory segment starting at offset (defaultMinShmSize + 20)
-		err = WriteInt32s(1, 6, 7, 8, 9, 10)
+		err = AppendInt32s(testShmKey, 6, 7, 8, 9, 10)
 		require.NoError(t, err)
 
 		// Read the current offset value from the shared memory segment and ensure it is (defaultMinShmSize+40)
-		offset, err = ReadOffset(1)
+		offset, err = ReadOffset(testShmKey)
 		require.NoError(t, err)
 		require.Equal(t, int64(DefualtMinShmSize+40), offset)
 
 		// Read five int32 values from the shared memory segment starting at offset 20 and ensure they are the values we wrote
 		values = make([]int32, 5)
-		err = ReadInt32s(1, 20, values)
+		err = ReadRowInInt32s(testShmKey, 20, values)
 		require.NoError(t, err)
 		require.Equal(t, []int32{6, 7, 8, 9, 10}, values)
 	})

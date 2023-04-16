@@ -24,12 +24,15 @@ const (
 	StatusNoReserve              = C.SHM_NORESERVE // the constant with the value of C.SHM_NORESERVE that represents the flag for creating a shared memory segment without reserving swap space.
 )
 
+// Error Defines a new Error type as a string
 type Error string
 
+// Error returns the error message
 func (e Error) Error() string {
 	return string(e)
 }
 
+// version information
 const (
 	MajorVersion uint16 = 1
 	MinorVersion uint16 = 2
@@ -44,6 +47,7 @@ const (
 	DefualtMinShmSize    = 2 + 2 + 2 + 8 + 8 + 8 + 4 + 4 + 8 + 4
 )
 
+// error list
 const (
 	ErrFailToRetrieveShmSize       = Error("failed to retrieve shm size")
 	ErrNegativeOrZeroShmKey        = Error("shm key should not be negative or zero")
@@ -75,6 +79,7 @@ const (
 // VsegmentMap : map key to id
 var VsegmentMap []int64
 
+// init : initialize VsegmentMap
 func init() {
 	VsegmentMap = make([]int64, defaultMaxKeyValue)
 }
@@ -172,6 +177,7 @@ func newWithReturnId(opts Vopts) (segment *Vsegment, err error) {
 		*/
 		err = ErrIllegalKey
 	}
+	// Return the "segment" variable and "err" variable
 	return
 }
 
@@ -598,6 +604,11 @@ func WriteOffset(key, offset int64) (err error) {
 	vg.id = shmId
 	vg.offset = 2 + 2 + 2 + 8 + 8 + 8 + 4 + 4
 
+	/*
+		Set the size of the shared memory segment to the default minimum size.
+		It is because the offset information is stored in the first DefualtMinShmSize of the shared memory segment
+		不用考虑后面的资料数据，直接设 size 为预设最小值就行了
+	*/
 	vg.size = DefualtMinShmSize
 
 	// Write offset information to the shared memory segment
@@ -731,11 +742,11 @@ func DeleteShm(key int64) (err error) {
 }
 
 /*
-WriteInt32s writes int32 values to a shared memory segment based on a given key, with error handling for exceeding maximum key value and non-existent keys.
+AppendInt32s writes int32 values to a shared memory segment based on a given key, with error handling for exceeding maximum key value and non-existent keys.
 It utilizes the VsegmentMap to retrieve the shared memory ID and writes the values in little-endian format.
 Finally, it updates the offset value for the given key.
 */
-func WriteInt32s(key int64, values ...int32) (err error) {
+func AppendInt32s(key int64, values ...int32) (err error) {
 	// Read the offset value for the given key
 	var shmOffset int64
 	shmOffset, err = ReadOffset(key)
@@ -744,17 +755,26 @@ func WriteInt32s(key int64, values ...int32) (err error) {
 	}
 
 	// Overwrite the int32 values at the given offset by shifting them
-	err = OverwriteInt32sByShift(key, shmOffset, values...)
+	err = OverwriteOrAppendInt32sByShift(key, shmOffset, true, values...)
 
 	// Return the error value
 	return
 }
 
 /*
-OverwriteInt32sByShift writes int32 values to a shared memory segment with a given key and offset.
-It checks if the key is valid and updates the offset value after writing.
+OverwriteOrAppendInt32sByShift writes int32 values to a shared memory segment with a given key and shmShift.
+
+There are two ways to write int32 values to a shared memory segment.
+
+1. OverwriteOrAppendInt32sByShift set updateOffset to true
+When updateOffset is true, the offset value will be updated after writing.
+It is used to append shm data.
+
+2. OverwriteInt32sByOffset set updateOffset to false
+When updateOffset is false, the offset value will not be updated after writing.
+It is used to overwrite shm data.
 */
-func OverwriteInt32sByShift(key int64, shmOffset int64, values ...int32) (err error) {
+func OverwriteOrAppendInt32sByShift(key int64, shmShift int64, updateOffset bool, values ...int32) (err error) {
 	// Check if the value of opts.Key exceeds the default maximum allowed value
 	if key > defaultMaxKeyValue {
 		err = ErrExceedDefaultMaxKeyValue
@@ -768,9 +788,9 @@ func OverwriteInt32sByShift(key int64, shmOffset int64, values ...int32) (err er
 		return
 	}
 
-	// move this area to the WriteInt32s function
-	/*var shmOffset int64
-	shmOffset, err = ReadOffset(key)
+	// move this area to the AppendInt32s function
+	/*var shmShift int64
+	shmShift, err = ReadOffset(key)
 	if err != nil {
 		return
 	}*/
@@ -786,7 +806,7 @@ func OverwriteInt32sByShift(key int64, shmOffset int64, values ...int32) (err er
 	vg := new(Vsegment)
 	vg.key = key
 	vg.id = VsegmentMap[key]
-	vg.offset = shmOffset
+	vg.offset = shmShift
 	vg.size = shmSize
 
 	// Write value information to the shared memory segment
@@ -799,10 +819,12 @@ func OverwriteInt32sByShift(key int64, shmOffset int64, values ...int32) (err er
 		})
 	}
 
-	// Update the offset value for the given key
-	err = WriteOffset(key, vg.offset)
-	if err != nil {
-		return
+	if updateOffset == true {
+		// Update the offset value for the given key
+		err = WriteOffset(key, vg.offset)
+		if err != nil {
+			return
+		}
 	}
 
 	// Return the error value
@@ -810,10 +832,10 @@ func OverwriteInt32sByShift(key int64, shmOffset int64, values ...int32) (err er
 }
 
 /*
-ReadInt32s reads a slice of 32-bit integers from a shared memory segment, specified by a given key and an offset.
+ReadRowInInt32s reads a slice of 32-bit integers from a shared memory segment, specified by a given key and an shmShift.
 It reads each 32-bit integer from the shared memory segment using vg.readWithId and stores them in the input values slice.
 */
-func ReadInt32s(key, shift int64, values []int32) (err error) {
+func ReadRowInInt32s(key, shmShift int64, values []int32) (err error) {
 	// Check if the value of opts.Key exceeds the default maximum allowed value
 	if key > defaultMaxKeyValue {
 		err = ErrExceedDefaultMaxKeyValue
@@ -834,8 +856,8 @@ func ReadInt32s(key, shift int64, values []int32) (err error) {
 		return
 	}
 
-	// Check if the shift value exceeds the offset value
-	if shift+DefualtMinShmSize > shmOffset {
+	// Check if the shmShift value exceeds the offset value
+	if shmShift+DefualtMinShmSize > shmOffset {
 		err = ErrShmReadingBeyond
 		return
 	}
@@ -851,7 +873,7 @@ func ReadInt32s(key, shift int64, values []int32) (err error) {
 	vg := new(Vsegment)
 	vg.key = key
 	vg.id = VsegmentMap[key]
-	vg.offset = DefualtMinShmSize + shift
+	vg.offset = DefualtMinShmSize + shmShift
 	vg.size = shmSize
 
 	// Read value information from the shared memory segment and store it in the values slice
