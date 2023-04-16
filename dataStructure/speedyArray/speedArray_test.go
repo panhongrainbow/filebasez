@@ -20,9 +20,9 @@ func Test_Check_SpeedyArrayInt32(t *testing.T) {
 	opts := Opts{
 		// ShmKey represents the shared memory key
 		ShmKey: testShmKey,
-		// width and length represent the width and length of the array respectively
-		width:  5,
-		length: 30,
+		// Width and Length represent the Width and Length of the array respectively
+		Width:  5,
+		Length: 30,
 	}
 
 	// Create a new instance of SpdArrayInt32 with the given options
@@ -185,9 +185,9 @@ func Test_Check_SpeedyArrayInt32_Unique(t *testing.T) {
 	opts := Opts{
 		// ShmKey represents the shared memory key
 		ShmKey: testShmKey,
-		// width and length represent the width and length of the array respectively
-		width:  9,
-		length: 30,
+		// Width and Length represent the Width and Length of the array respectively
+		Width:  9,
+		Length: 30,
 	}
 
 	// Create a new instance of SpdArrayInt32 with the given options

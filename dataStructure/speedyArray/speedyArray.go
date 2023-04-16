@@ -36,15 +36,15 @@ type Opts struct {
 	// ShmKey represents the shared memory key
 	ShmKey int64
 
-	// width and length represent the width and length of the array respectively
-	width  uint64
-	length uint64
+	// Width and Length represent the Width and Length of the array respectively
+	Width  uint64
+	Length uint64
 }
 
 // NewSpeedyArrayInt32 creates a new instance of SpdArrayInt32 with the given options.
 func NewSpeedyArrayInt32(opts Opts) (array SpdArrayInt32, err error) {
-	// estimateSize calculates the estimated size of the shared memory based on the width and length of the array
-	estimateSize := shm.DefualtMinShmSize + (opts.width*opts.length)*4
+	// estimateSize calculates the estimated size of the shared memory based on the Width and Length of the array
+	estimateSize := shm.DefualtMinShmSize + (opts.Width*opts.Length)*4
 
 	// shmOts is an instance of Vopts with the given shared memory key and estimated size
 	shmOts := shm.Vopts{
@@ -59,7 +59,7 @@ func NewSpeedyArrayInt32(opts Opts) (array SpdArrayInt32, err error) {
 
 	// create a new instance of SpdArrayInt32 with the given options and an empty shiftMap
 	array = SpdArrayInt32{
-		shiftMap: make(map[int32][]int64, opts.length),
+		shiftMap: make(map[int32][]int64, opts.Length),
 		opts:     opts,
 	}
 
@@ -88,8 +88,8 @@ func (array SpdArrayInt32) AppendArrayInt32(elements ...int32) (err error) {
 		array.shiftMap[elements[0]] = make([]int64, 0, 5)
 	}
 
-	// create a new int32 slice with the width specified in the options
-	var newElements = make([]int32, array.opts.width, array.opts.width)
+	// create a new int32 slice with the Width specified in the options
+	var newElements = make([]int32, array.opts.Width, array.opts.Width)
 	// copy the given elements to the newElements slice
 	copy(newElements, elements)
 
@@ -107,13 +107,13 @@ func (array SpdArrayInt32) AppendArrayInt32(elements ...int32) (err error) {
 	}
 
 	// calculate the new offset value
-	offset := shmOffset - int64(array.opts.width*4)
+	offset := shmOffset - int64(array.opts.Width*4)
 
 	// append the new offset value to the shiftMap for the first element
 	array.shiftMap[elements[0]] = append(array.shiftMap[elements[0]], offset-shm.DefualtMinShmSize)
 
 	// Check if the elements are truncated
-	if len(elements) > int(array.opts.width) {
+	if len(elements) > int(array.opts.Width) {
 		err = ErrTruncateData
 		return
 	}
@@ -172,7 +172,7 @@ func (array SpdArrayInt32) Unique(elements ...int32) (err error) {
 
 // ReadRowInInt32ByShift obtains an int32 array from the shared memory space by an offset.
 func (array SpdArrayInt32) ReadRowInInt32ByShift(shmShift int64) (elements []int32, err error) {
-	elements = make([]int32, array.opts.width)
+	elements = make([]int32, array.opts.Width)
 	err = shm.ReadRowInInt32s(array.opts.ShmKey, shmShift, elements)
 	return
 }
